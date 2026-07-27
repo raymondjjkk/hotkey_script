@@ -56,6 +56,7 @@ shutdownPath := AppDir "shutdown_30second.bat"
 restartPath  := AppDir "restart_30second.bat"
 ;===========================================
 notepadPath  := "C:\WINDOWS\notepad.exe"
+screentogifPath := AppDir "screentogif.lnk"
 ;===========================================
 
 ` & 1::SmartRun(chromePath)
@@ -68,7 +69,14 @@ notepadPath  := "C:\WINDOWS\notepad.exe"
 ` & 8::SmartRun(telegramPath)
 ` & 9::SmartRun(restartPath)
 ` & 0::SmartRun(shutdownPath)
+
+;================================
+; 字母区软件快捷启动
+;================================
 ` & n::SmartRun(ethernetPath)
+` & g::SmartRun(screentogifPath)
+
+
 
 SmartRun(Path) {
     if FileExist(Path) {
