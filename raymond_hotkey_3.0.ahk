@@ -57,6 +57,8 @@ restartPath  := AppDir "restart_30second.bat"
 ;===========================================
 notepadPath  := "C:\WINDOWS\notepad.exe"
 screentogifPath := AppDir "screentogif.lnk"
+everythingPath := AppDir "everything.lnk"
+anytxtPath := AppDir "anytxt.lnk"
 ;===========================================
 
 ` & 1::SmartRun(chromePath)
@@ -103,6 +105,8 @@ RegisterMultiTap("n", 5, PentaNAction)
 RegisterMultiTap("z", 3, TripleZAction)
 RegisterMultiTap("r", 3, TripleRAction)
 RegisterMultiTap("y", 3, TripleYAction)
+RegisterMultiTap("e", 3, TripleEAction)
+RegisterMultiTap("a", 3, TripleAAction)
 
 ; ---【多击调用的具体函数】---
 TripleAltAction() {
@@ -152,6 +156,19 @@ TripleYAction() {
     SmartRun(YouTubePath)
     Sleep(30)
 }
+
+TripleEAction() {
+    Send("{Backspace 3}")
+    SmartRun(everythingPath)
+    Sleep(30)
+}
+
+TripleAAction() {
+    Send("{Backspace 3}")
+    SmartRun(anytxtPath)
+    Sleep(30)
+}
+
 
 ; 通用轻量气泡提示
 ShowTip(text) {
@@ -212,12 +229,12 @@ AutoSaveNotepad() {
     }
 }
 #HotIf
-
 ; ==============================================================================
-; 7. 划词选中文本自动复制（VS Code 深度优化版 + 核心 Bug 修复）
+; 7. 划词选中文本自动复制（优化版：彻底解决误触/整行复制问题）
 ; ==============================================================================
-MIN_DRAG_DISTANCE := 30
-MAX_DRAG_TIME_MS  := 2000
+MIN_DRAG_X       := 25   ; 水平拖动至少 25 像素
+MIN_DRAG_Y       := 40   ; 纵向拖动阈值提高到 40 像素（防止点击时纵向微抖）
+MAX_DRAG_TIME_MS := 2000
 
 global g_AutoCopy_StartX := 0
 global g_AutoCopy_StartY := 0
@@ -237,14 +254,17 @@ global g_AutoCopy_StartTime := 0
     || WinActive("ahk_exe SnippingToolApp.exe")
         return
 
+    ; 过滤浏览器顶部标签页区域
     if WinActive("ahk_exe chrome.exe") && (g_AutoCopy_StartY < 120)
         return
 
+    ; 过滤 VS Code 的侧边栏和顶部菜单
     if WinActive("ahk_exe Code.exe") {
         if (g_AutoCopy_StartX < 80 || g_AutoCopy_StartY < 70)
             return
     }
 
+    ; 如果按下了 Ctrl/Shift/Alt 键，不触发（避免组合键点击干扰）
     if GetKeyState("Shift", "P") || GetKeyState("Ctrl", "P") || GetKeyState("Alt", "P")
         return
 
@@ -256,7 +276,9 @@ global g_AutoCopy_StartTime := 0
     deltaX := Abs(endX - g_AutoCopy_StartX)
     deltaY := Abs(endY - g_AutoCopy_StartY)
 
-    if (deltaX > MIN_DRAG_DISTANCE || deltaY > MIN_DRAG_DISTANCE) {
+    ; 优化判定：必须满足“水平划词”或“明显的纵向多行划词”
+    ; 如果仅仅是鼠标点击时的微抖，直接忽略
+    if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
         priorText := ""
         try priorText := A_Clipboard
 
@@ -270,9 +292,22 @@ global g_AutoCopy_StartTime := 0
         Send("^c")
 
         if ClipWait(0.15, 0) {
-            currentText := Trim(A_Clipboard)
-            
-            if (currentText != "" && currentText != priorText) {
+            currentText := A_Clipboard
+            trimmedText := Trim(currentText)
+
+            ; 🔍 防误触核心逻辑：
+            ; 1. 如果是在同一行内的微小移动(deltaY较小)，但复制出的文本末尾带换行符(\n或\r)，
+            ;    说明编辑器执行了“未选中文本时复制整行”的动作，直接废弃这次复制。
+            isSingleLineDrag := (deltaY < 30)
+            hasNewline := InStr(currentText, "`n") || InStr(currentText, "`r")
+
+            if (isSingleLineDrag && hasNewline) {
+                A_Clipboard := oldClip ; 恢复原来的剪贴板
+                return
+            }
+
+            ; 正常复制逻辑检查
+            if (trimmedText != "" && trimmedText != priorText) {
                 ShowTip("Copied")
             } else {
                 A_Clipboard := oldClip 
@@ -282,7 +317,6 @@ global g_AutoCopy_StartTime := 0
         }
     }
 }
-
 ; ==============================================================================
 ; 8. 鼠标右键连击触发粘贴
 ; ==========================================
