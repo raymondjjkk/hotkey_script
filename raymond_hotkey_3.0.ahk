@@ -230,11 +230,12 @@ AutoSaveNotepad() {
 }
 #HotIf
 ; ==============================================================================
-; 7. 划词选中文本自动复制（优化版：彻底解决误触/整行复制问题）
+; 7. 划词选中文本自动复制（针对 VS Code 防误触终极修正版）
 ; ==============================================================================
-MIN_DRAG_X       := 25   ; 水平拖动至少 25 像素
-MIN_DRAG_Y       := 40   ; 纵向拖动阈值提高到 40 像素（防止点击时纵向微抖）
-MAX_DRAG_TIME_MS := 2000
+MIN_DRAG_X       := 35   ; 提高水平拖动门槛，彻底排除单击时的手抖（小于 35 像素一律算点击）
+MIN_DRAG_Y       := 45   ; 提高纵向拖动门槛
+MAX_DRAG_TIME_MS := 1500 ; 拖拽最长时间限制
+MIN_DRAG_TIME_MS := 80   ; ⚡ 新增：按下到松开必须大于 80ms，直接过滤所有的快速“单击/双击”
 
 global g_AutoCopy_StartX := 0
 global g_AutoCopy_StartY := 0
@@ -249,40 +250,42 @@ global g_AutoCopy_StartTime := 0
 ~LButton Up:: {
     global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime
 
+    ; 1. 过滤截图工具与系统窗口
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
     || WinActive("ahk_exe SnippingTool.exe") 
     || WinActive("ahk_exe SnippingToolApp.exe")
         return
 
-    ; 过滤浏览器顶部标签页区域
+    ; 2. 过滤 Chrome 浏览器标签页区域
     if WinActive("ahk_exe chrome.exe") && (g_AutoCopy_StartY < 120)
         return
 
-    ; 过滤 VS Code 的侧边栏和顶部菜单
+    ; 3. 过滤 VS Code 的侧边栏、顶部菜单、底部状态栏
     if WinActive("ahk_exe Code.exe") {
         if (g_AutoCopy_StartX < 80 || g_AutoCopy_StartY < 70)
             return
     }
 
-    ; 如果按下了 Ctrl/Shift/Alt 键，不触发（避免组合键点击干扰）
+    ; 4. 如果按下了 Ctrl/Shift/Alt 键，不触发
     if GetKeyState("Shift", "P") || GetKeyState("Ctrl", "P") || GetKeyState("Alt", "P")
         return
 
     dragTime := A_TickCount - g_AutoCopy_StartTime
-    if (dragTime > MAX_DRAG_TIME_MS)
+    
+    ; ⚡ 关键过滤 1：时间太短说明只是单纯的“点击”或“双击”，绝不是“拖拽划词”
+    if (dragTime < MIN_DRAG_TIME_MS || dragTime > MAX_DRAG_TIME_MS)
         return
 
     MouseGetPos(&endX, &endY)
     deltaX := Abs(endX - g_AutoCopy_StartX)
     deltaY := Abs(endY - g_AutoCopy_StartY)
 
-    ; 优化判定：必须满足“水平划词”或“明显的纵向多行划词”
-    ; 如果仅仅是鼠标点击时的微抖，直接忽略
+    ; ⚡ 关键过滤 2：只有当移动距离明显大于阈值时，才认定为划词
     if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
         priorText := ""
         try priorText := A_Clipboard
 
-        Sleep(80) 
+        Sleep(50) 
         if GetKeyState("Backspace", "P") || GetKeyState("Delete", "P") || GetKeyState("v", "P")
             return
 
@@ -291,22 +294,21 @@ global g_AutoCopy_StartTime := 0
 
         Send("^c")
 
-        if ClipWait(0.15, 0) {
+        if ClipWait(0.12, 0) {
             currentText := A_Clipboard
             trimmedText := Trim(currentText)
 
-            ; 🔍 防误触核心逻辑：
-            ; 1. 如果是在同一行内的微小移动(deltaY较小)，但复制出的文本末尾带换行符(\n或\r)，
-            ;    说明编辑器执行了“未选中文本时复制整行”的动作，直接废弃这次复制。
-            isSingleLineDrag := (deltaY < 30)
+            ; ⚡ 关键过滤 3：VS Code 无选中复制整行时，末尾必定带 `\r\n` 或 `\n`。
+            ; 如果是在单行内拖拽(deltaY较小)，但复制出了换行符，说明 VS Code 复制了整行，直接废弃！
+            isSingleLineDrag := (deltaY < 25)
             hasNewline := InStr(currentText, "`n") || InStr(currentText, "`r")
 
             if (isSingleLineDrag && hasNewline) {
-                A_Clipboard := oldClip ; 恢复原来的剪贴板
+                A_Clipboard := oldClip ; 还原剪贴板
                 return
             }
 
-            ; 正常复制逻辑检查
+            ; 只有成功拿到有效新文本才提示
             if (trimmedText != "" && trimmedText != priorText) {
                 ShowTip("Copied")
             } else {
@@ -317,6 +319,7 @@ global g_AutoCopy_StartTime := 0
         }
     }
 }
+
 ; ==============================================================================
 ; 8. 鼠标右键连击触发粘贴
 ; ==========================================
