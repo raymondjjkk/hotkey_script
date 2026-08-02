@@ -3,7 +3,32 @@
 ListLines 0
 
 ; ==========================================
-; 0. 开发辅助：在编辑器中按 Ctrl+S 保存脚本时自动重新加载
+; 0. 全局配置与变量 & GUI 初始化 (Gemini Uploader)
+; ==========================================
+global isImageReadyToUpload := false
+global geminiLnkPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\Gemini.lnk"
+global iconPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\gemini.png"
+
+; 创建悬浮窗 UI
+global FloatingGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "GeminiUploader")
+FloatingGui.BackColor := "EEAA99"  
+WinSetTransColor("EEAA99", FloatingGui) ; 背景透明抠图，实现真正的无边框悬浮
+
+; 启动前检测：如果没找到图片，会弹窗提醒
+if !FileExist(iconPath) {
+    MsgBox("未能找到图片！`n`n请确保路径正确：`n" iconPath, "缺少文件", "Iconx")
+    ExitApp()
+}
+
+; 渲染精致小巧的 48x48 悬浮图标
+iconBtn := FloatingGui.Add("Picture", "w48 h48 BackgroundTrans", iconPath)
+iconBtn.OnEvent("Click", TriggerUpload)
+
+; 监听剪贴板变化
+OnClipboardChange(ClipboardChangedHandler)
+
+; ==========================================
+; 开发辅助：在编辑器中按 Ctrl+S 保存脚本时自动重新加载
 ; ==========================================
 if (A_Args.Length > 0 && A_Args[1] == "/reloaded") {
     ShowTip("Script successfully reloaded")
@@ -78,7 +103,6 @@ anytxtPath := AppDir "anytxt.lnk"
 ` & n::SmartRun(ethernetPath)
 ` & g::SmartRun(screentogifPath)
 
-
 SmartRun(Path) {
     if FileExist(Path) {
         Run(Path)
@@ -96,7 +120,6 @@ SmartRun(Path) {
 ; ==============================================================================
 ; 4. 系统化【多击按键】注册配置区（全部享受快速连击限制）
 ; ==========================================
-
 RegisterMultiTap("LAlt", 3, TripleAltAction)  
 RegisterMultiTap("RAlt", 3, TripleAltAction)  
 RegisterMultiTap("Space", 4, QuadSpaceAction)
@@ -167,7 +190,6 @@ TripleAAction() {
     SmartRun(anytxtPath)
     Sleep(30)
 }
-
 
 ; 通用轻量气泡提示
 ShowTip(text) {
@@ -242,6 +264,7 @@ AutoSaveNotepad() {
     }
 }
 #HotIf
+
 ; ==============================================================================
 ; 7. 划词选中文本自动复制（针对 VS Code 防误触终极修正版）
 ; ==============================================================================
@@ -362,4 +385,59 @@ RClick_TimeLimit   := 450
         
         ShowTip("📋 已粘贴")
     }
+}
+
+; ==========================================
+; 9. 新功能：剪贴板图片监听与 Gemini 自动上传
+; ==========================================
+ClipboardChangedHandler(DataType) {
+    global isImageReadyToUpload
+    
+    if (DataType == 2 && (DllCall("IsClipboardFormatAvailable", "UInt", 2) || DllCall("IsClipboardFormatAvailable", "UInt", 8))) {
+        isImageReadyToUpload := true
+        ShowFloatingIcon()
+    } else {
+        isImageReadyToUpload := false
+        HideFloatingIcon()
+    }
+}
+
+ShowFloatingIcon() {
+    FloatingGui.Show("Center NoActivate")
+    SetTimer(HideFloatingIcon, -10000) ; 10秒后自动隐藏
+}
+
+HideFloatingIcon() {
+    FloatingGui.Hide()
+}
+
+TriggerUpload(*) {
+    global isImageReadyToUpload
+    
+    SetTimer(HideFloatingIcon, 0)
+    FloatingGui.Hide()
+    isImageReadyToUpload := false
+    
+    try {
+        Run(geminiLnkPath)
+    } catch {
+        MsgBox("无法找到 Gemini 快捷方式，请检查路径是否正确：`n" geminiLnkPath, "路径错误", "Iconx")
+        return
+    }
+    
+    Sleep(1500)
+    Send("^v")
+    Sleep(800)
+    Send("{Enter}")
+}
+
+; --- 悬浮窗相关快捷键 ---
+#+g:: {
+    if (isImageReadyToUpload) {
+        TriggerUpload()
+    }
+}
+
+~Esc:: {
+    HideFloatingIcon()
 }
