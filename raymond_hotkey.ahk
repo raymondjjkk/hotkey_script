@@ -118,7 +118,7 @@ SmartRun(Path) {
 +`::SendText("~")
 
 ; ==============================================================================
-; 4. 系统化【多击按键】注册配置区（全部享受快速连击限制）
+; 4. 系统化【多击按键】注册配置区
 ; ==========================================
 RegisterMultiTap("LAlt", 3, TripleAltAction)  
 RegisterMultiTap("RAlt", 3, TripleAltAction)  
@@ -138,20 +138,12 @@ TripleAltAction() {
 }
 
 QuadSpaceAction() {
-    ; 1. 强制清空修饰键，避免系统残留按键
     Send("{Ctrl Up}{Shift Up}{Alt Up}")
-    
-    ; 2. 删除输入的 4 个空格
     Send("{Backspace 4}")
-    
-    ; 3. 给系统输入框 150ms 的缓冲，确保退格完全执行
     Sleep(150)
-    
-    ; 4. 跨脚本触发翻译脚本的 Ctrl+Shift+7（强化的稳定触发逻辑）
     SendLevel 1
     SendEvent "{Ctrl Down}{Shift Down}{7}{Shift Up}{Ctrl Up}"
     SendLevel 0
-    
     ShowTip("⚡ activated QuadSpaceAction")
 }
 
@@ -191,14 +183,13 @@ TripleAAction() {
     Sleep(30)
 }
 
-; 通用轻量气泡提示
 ShowTip(text) {
     ToolTip(text)
     SetTimer(() => ToolTip(), -1000)
 }
 
 ; ==========================================
-; 5. 多击逻辑的核心通用引擎（已内置“快速触发”限制）
+; 5. 多击逻辑的核心通用引擎
 ; ==========================================
 RegisterMultiTap(key, targetCount, callback, maxSpeedInterval := 200) {
     static stateMap := Map()
@@ -211,7 +202,6 @@ RegisterMultiTap(key, targetCount, callback, maxSpeedInterval := 200) {
         now := A_TickCount
         diff := now - st.lastTime
 
-        ; 如果两次按键间隔太久（超过了最大允许速度间隔），或者已经触发过，则重置计数
         if (st.lastTime == 0 || diff > maxSpeed || st.triggered) {
             st.count := 1
             st.triggered := false
@@ -231,7 +221,7 @@ RegisterMultiTap(key, targetCount, callback, maxSpeedInterval := 200) {
 }
 
 ; ==========================================
-; 6. Windows 11 记事本智能静默自动保存（无键输入法干扰版）
+; 6. Windows 11 记事本智能静默自动保存
 ; ==========================================
 #HotIf WinActive("ahk_class Notepad") || WinActive("ahk_exe Notepad.exe")
 SetTimer AutoSaveNotepad, 3000
@@ -239,22 +229,16 @@ SetTimer AutoSaveNotepad, 3000
 AutoSaveNotepad() {
     if !WinActive("ahk_exe Notepad.exe")
         return
-
-    ; 键盘闲置不足 2 秒时不自动保存，避免打断输入
     if (A_TimeIdleKeyboard < 2000)
         return
-
-    ; 如果用户当前正按着 Ctrl/Shift/Alt，先跳过本次自动保存，避免干扰输入法
     if GetKeyState("Ctrl") || GetKeyState("Shift") || GetKeyState("Alt")
         return
 
     title := WinGetTitle("A")
     if InStr(title, "•") || InStr(title, "*") {
-        ; 优先采用 Windows 消息 (WM_COMMAND = 0x0111, ID = 3) 直接触发记事本保存，不模拟物理按键
         try {
             PostMessage(0x0111, 3, 0, , "ahk_exe Notepad.exe")
         } catch {
-            ; 备用方案：如果 API 方案失效，使用 {Ctrl down}s{Ctrl up} 规范发送
             SendKeyDelay := A_KeyDelay
             SetKeyDelay 10, 10
             ControlSend("{Ctrl down}s{Ctrl up}", , "ahk_exe Notepad.exe")
@@ -266,12 +250,12 @@ AutoSaveNotepad() {
 #HotIf
 
 ; ==============================================================================
-; 7. 划词选中文本自动复制（针对 VS Code 防误触终极修正版）
+; 7. 划词选中文本自动复制
 ; ==============================================================================
-MIN_DRAG_X       := 35   ; 提高水平拖动门槛，彻底排除单击时的手抖（小于 35 像素一律算点击）
-MIN_DRAG_Y       := 45   ; 提高纵向拖动门槛
-MAX_DRAG_TIME_MS := 1500 ; 拖拽最长时间限制
-MIN_DRAG_TIME_MS := 80   ; ⚡ 新增：按下到松开必须大于 80ms，直接过滤所有的快速“单击/双击”
+MIN_DRAG_X       := 35   
+MIN_DRAG_Y       := 45   
+MAX_DRAG_TIME_MS := 1500 
+MIN_DRAG_TIME_MS := 80   
 
 global g_AutoCopy_StartX := 0
 global g_AutoCopy_StartY := 0
@@ -286,29 +270,24 @@ global g_AutoCopy_StartTime := 0
 ~LButton Up:: {
     global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime
 
-    ; 1. 过滤截图工具与系统窗口
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
     || WinActive("ahk_exe SnippingTool.exe") 
     || WinActive("ahk_exe SnippingToolApp.exe")
         return
 
-    ; 2. 过滤 Chrome 浏览器标签页区域
     if WinActive("ahk_exe chrome.exe") && (g_AutoCopy_StartY < 120)
         return
 
-    ; 3. 过滤 VS Code 的侧边栏、顶部菜单、底部状态栏
     if WinActive("ahk_exe Code.exe") {
         if (g_AutoCopy_StartX < 80 || g_AutoCopy_StartY < 70)
             return
     }
 
-    ; 4. 如果按下了 Ctrl/Shift/Alt 键，不触发
     if GetKeyState("Shift", "P") || GetKeyState("Ctrl", "P") || GetKeyState("Alt", "P")
         return
 
     dragTime := A_TickCount - g_AutoCopy_StartTime
     
-    ; ⚡ 关键过滤 1：时间太短说明只是单纯的“点击”或“双击”，绝不是“拖拽划词”
     if (dragTime < MIN_DRAG_TIME_MS || dragTime > MAX_DRAG_TIME_MS)
         return
 
@@ -316,7 +295,6 @@ global g_AutoCopy_StartTime := 0
     deltaX := Abs(endX - g_AutoCopy_StartX)
     deltaY := Abs(endY - g_AutoCopy_StartY)
 
-    ; ⚡ 关键过滤 2：只有当移动距离明显大于阈值时，才认定为划词
     if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
         priorText := ""
         try priorText := A_Clipboard
@@ -327,24 +305,20 @@ global g_AutoCopy_StartTime := 0
 
         oldClip := ClipboardAll()
         A_Clipboard := ""
-
         Send("^c")
 
         if ClipWait(0.12, 0) {
             currentText := A_Clipboard
             trimmedText := Trim(currentText)
 
-            ; ⚡ 关键过滤 3：VS Code 无选中复制整行时，末尾必定带 `\r\n` 或 `\n`。
-            ; 如果是在单行内拖拽(deltaY较小)，但复制出了换行符，说明 VS Code 复制了整行，直接废弃！
             isSingleLineDrag := (deltaY < 25)
             hasNewline := InStr(currentText, "`n") || InStr(currentText, "`r")
 
             if (isSingleLineDrag && hasNewline) {
-                A_Clipboard := oldClip ; 还原剪贴板
+                A_Clipboard := oldClip
                 return
             }
 
-            ; 只有成功拿到有效新文本才提示
             if (trimmedText != "" && trimmedText != priorText) {
                 ShowTip("Copied")
             } else {
@@ -365,38 +339,42 @@ RClick_TimeLimit   := 450
 ~RButton:: {
     static lastTime := 0
     static clickCount := 0
-    
     now := A_TickCount
-    
     if (now - lastTime > RClick_TimeLimit) {
         clickCount := 1
     } else {
         clickCount++
     }
-    
     lastTime := now
-    
     if (clickCount >= RClick_TargetCount) {
         clickCount := 0
-        
         Send("^v")
         Sleep(50)
         Send("{Esc}")
-        
         ShowTip("📋 已粘贴")
     }
 }
 
 ; ==========================================
-; 9. 新功能：剪贴板图片监听与 Gemini 自动上传
+; 9. 终极优化版：剪贴板图片监听与 Gemini 自动上传
 ; ==========================================
 ClipboardChangedHandler(DataType) {
+    ; 修复 Bug 2 (闪退问题)：加入 150 毫秒的“防抖” (Debounce) 定时器。
+    ; 截图软件写入剪贴板时会产生多次震荡，延迟判断可以确保拿到最终稳态的数据。
+    SetTimer(CheckClipboardForImage, -150)
+}
+
+CheckClipboardForImage() {
     global isImageReadyToUpload
     
-    if (DataType == 2 && (DllCall("IsClipboardFormatAvailable", "UInt", 2) || DllCall("IsClipboardFormatAvailable", "UInt", 8))) {
+    ; 检查系统底层标识：CF_BITMAP(2), CF_DIB(8), CF_DIBV5(17) 代表剪贴板内含有真正图像
+    if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
+     || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
+     || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
         isImageReadyToUpload := true
         ShowFloatingIcon()
     } else {
+        ; 只有当剪贴板里明确【不是图片】时，才撤下图标
         isImageReadyToUpload := false
         HideFloatingIcon()
     }
@@ -404,7 +382,7 @@ ClipboardChangedHandler(DataType) {
 
 ShowFloatingIcon() {
     FloatingGui.Show("Center NoActivate")
-    SetTimer(HideFloatingIcon, -10000) ; 10秒后自动隐藏
+    SetTimer(HideFloatingIcon, -10000) ; 10秒后未操作则自动超时隐藏
 }
 
 HideFloatingIcon() {
@@ -418,20 +396,52 @@ TriggerUpload(*) {
     FloatingGui.Hide()
     isImageReadyToUpload := false
     
+    ; --- 修复 Bug 1：智能窗口排他与精准唤醒 ---
     try {
-        Run(geminiLnkPath)
+        ; 临时开启完全匹配模式，避免误匹配到带有 "Gemini" 名字的普通浏览器标签页
+        oldTitleMatchMode := A_TitleMatchMode
+        SetTitleMatchMode(3) ; 3 = Exact Match (精确匹配)
+        
+        ; 锁定目标特征：Chrome 独立应用 (PWA) 的标题通常纯净且类名为 Chrome_WidgetWin_1
+        targetWinTitle := "Gemini ahk_exe chrome.exe"
+        
+        ; 情况 A: 用户当前就在使用 Gemini 窗口，直接就地粘贴，不打扰当前视野
+        if WinActive(targetWinTitle) {
+            ; 保持当前活动窗口状态
+        } 
+        ; 情况 B: 存在已经打开的 Gemini 窗口 (可能在后台, 或多个中的某一个)
+        ; AHK 的 WinExist 默认总是获取“最近活跃的”那个窗口，完美规避群发并节省流量
+        else if WinExist(targetWinTitle) {
+            WinActivate(targetWinTitle)
+            WinWaitActive(targetWinTitle, , 2)
+        } 
+        ; 情况 C: 未打开任何 Gemini，启动全新的
+        else {
+            Run(geminiLnkPath)
+            if !WinWait(targetWinTitle, , 5) {
+                Sleep(1000) ; 如果电脑极度卡顿 5 秒都没出现，做个 1 秒保底等待
+            } else {
+                WinActivate(targetWinTitle)
+                WinWaitActive(targetWinTitle, , 2)
+            }
+        }
+        
+        ; 恢复原有匹配模式，以免影响系统其他热键逻辑
+        SetTitleMatchMode(oldTitleMatchMode)
+        
     } catch {
-        MsgBox("无法找到 Gemini 快捷方式，请检查路径是否正确：`n" geminiLnkPath, "路径错误", "Iconx")
+        MsgBox("无法启动 Gemini，请检查快捷方式路径：`n" geminiLnkPath, "路径错误", "Iconx")
         return
     }
     
-    Sleep(1500)
-    Send("^v")
-    Sleep(800)
-    Send("{Enter}")
+    ; --- 确保系统输入焦点并稳定发送内容 ---
+    Sleep(300)      ; 给页面输入框（如 Web 元素）一点获取焦点的微小缓冲时间
+    Send("^v")      ; 触发粘贴
+    Sleep(400)      ; 等待图片渲染/读取完毕，避免网速慢时瞬间被吞
+    Send("{Enter}") ; 提交至网络
 }
 
-; --- 悬浮窗相关快捷键 ---
+; --- 悬浮窗相关热键 ---
 #+g:: {
     if (isImageReadyToUpload) {
         TriggerUpload()
@@ -439,5 +449,5 @@ TriggerUpload(*) {
 }
 
 ~Esc:: {
-    HideFloatingIcon()
+    HideFloatingIcon() ; 顺手隐藏图标，避免遮挡
 }
