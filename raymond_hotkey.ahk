@@ -422,7 +422,7 @@ TriggerUpload(*) {
     ; --- 智能窗口排他与精准唤醒 ---
     try {
         oldTitleMatchMode := A_TitleMatchMode
-        SetTitleMatchMode(3) ; 精确匹配标题，防止唤醒错其他带 Gemini 名字的网页
+        SetTitleMatchMode(2) ; 🌟 核心修复：改为 2 模糊匹配，标题包含 Gemini 即可，防止由于细微标题改变导致识别不到旧窗口
         
         targetWinTitle := "Gemini ahk_exe chrome.exe"
         
