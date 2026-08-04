@@ -250,7 +250,7 @@ AutoSaveNotepad() {
 #HotIf
 
 ; ==============================================================================
-; 7. 划词选中文本自动复制
+; 7. 终极防冲突版：划词选中文本自动复制
 ; ==============================================================================
 MIN_DRAG_X       := 35   
 MIN_DRAG_Y       := 45   
@@ -270,9 +270,16 @@ global g_AutoCopy_StartTime := 0
 ~LButton Up:: {
     global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime
 
+    ; 🌟 保护锁 1：扩展已知截图软件的窗口屏蔽 (加入 Snipaste, PixPin 等)
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
     || WinActive("ahk_exe SnippingTool.exe") 
     || WinActive("ahk_exe SnippingToolApp.exe")
+    || WinActive("ahk_exe Snipaste.exe")
+    || WinActive("ahk_exe PixPin.exe")
+        return
+
+    ; 🌟 保护锁 2：行为特征拦截！大多数截图软件在选取范围时，鼠标指针都是十字准星
+    if (A_Cursor = "Cross")
         return
 
     if WinActive("ahk_exe chrome.exe") && (g_AutoCopy_StartY < 120)
@@ -307,7 +314,16 @@ global g_AutoCopy_StartTime := 0
         A_Clipboard := ""
         Send("^c")
 
-        if ClipWait(0.12, 0) {
+        ; 🌟 保护锁 3：ClipWait 的参数改为 1(等待任何数据)，防止图片被当成空内容覆盖
+        if ClipWait(0.15, 1) {
+            
+            ; 如果在这个节骨眼上，剪贴板里突然出现了图片（说明截图软件刚好写完），立刻悬崖勒马，绝对不去恢复 oldClip！
+            if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
+             || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
+             || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
+                return 
+            }
+
             currentText := A_Clipboard
             trimmedText := Trim(currentText)
 
@@ -325,7 +341,10 @@ global g_AutoCopy_StartTime := 0
                 A_Clipboard := oldClip 
             }
         } else {
-            A_Clipboard := oldClip 
+            ; 即使是超时，在恢复历史剪贴板前，也最后检查一遍有没有图片。保护图片绝对优先。
+            if !(DllCall("IsClipboardFormatAvailable", "UInt", 2) || DllCall("IsClipboardFormatAvailable", "UInt", 8)) {
+                A_Clipboard := oldClip 
+            }
         }
     }
 }
@@ -356,25 +375,29 @@ RClick_TimeLimit   := 450
 }
 
 ; ==========================================
-; 9. 终极优化版：剪贴板图片监听与 Gemini 自动上传
+; 9. 状态锁定版：剪贴板图片监听与 Gemini 自动上传
 ; ==========================================
 ClipboardChangedHandler(DataType) {
-    ; 修复 Bug 2 (闪退问题)：加入 150 毫秒的“防抖” (Debounce) 定时器。
-    ; 截图软件写入剪贴板时会产生多次震荡，延迟判断可以确保拿到最终稳态的数据。
+    ; 🌟 状态锁：DataType 为 0 代表剪贴板被“临时清空”
+    ; 这是截图软件保存数据时的中间操作，我们直接忽略它，不要触发“隐藏图标”的逻辑
+    if (DataType == 0)
+        return
+        
+    ; 给予 150 毫秒的防抖缓冲，让各种程序把剪贴板数据写完整
     SetTimer(CheckClipboardForImage, -150)
 }
 
 CheckClipboardForImage() {
     global isImageReadyToUpload
     
-    ; 检查系统底层标识：CF_BITMAP(2), CF_DIB(8), CF_DIBV5(17) 代表剪贴板内含有真正图像
+    ; 检查底层标志位，判断确认为图片
     if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
      || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
      || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
         isImageReadyToUpload := true
         ShowFloatingIcon()
     } else {
-        ; 只有当剪贴板里明确【不是图片】时，才撤下图标
+        ; 只有当用户明确复制了“纯文本/代码”等非图片内容时，才撤下悬浮窗
         isImageReadyToUpload := false
         HideFloatingIcon()
     }
@@ -382,7 +405,7 @@ CheckClipboardForImage() {
 
 ShowFloatingIcon() {
     FloatingGui.Show("Center NoActivate")
-    SetTimer(HideFloatingIcon, -10000) ; 10秒后未操作则自动超时隐藏
+    SetTimer(HideFloatingIcon, -10000) ; 10秒不理会它，会自动隐藏
 }
 
 HideFloatingIcon() {
@@ -396,37 +419,30 @@ TriggerUpload(*) {
     FloatingGui.Hide()
     isImageReadyToUpload := false
     
-    ; --- 修复 Bug 1：智能窗口排他与精准唤醒 ---
+    ; --- 智能窗口排他与精准唤醒 ---
     try {
-        ; 临时开启完全匹配模式，避免误匹配到带有 "Gemini" 名字的普通浏览器标签页
         oldTitleMatchMode := A_TitleMatchMode
-        SetTitleMatchMode(3) ; 3 = Exact Match (精确匹配)
+        SetTitleMatchMode(3) ; 精确匹配标题，防止唤醒错其他带 Gemini 名字的网页
         
-        ; 锁定目标特征：Chrome 独立应用 (PWA) 的标题通常纯净且类名为 Chrome_WidgetWin_1
         targetWinTitle := "Gemini ahk_exe chrome.exe"
         
-        ; 情况 A: 用户当前就在使用 Gemini 窗口，直接就地粘贴，不打扰当前视野
         if WinActive(targetWinTitle) {
-            ; 保持当前活动窗口状态
+            ; 就地粘贴
         } 
-        ; 情况 B: 存在已经打开的 Gemini 窗口 (可能在后台, 或多个中的某一个)
-        ; AHK 的 WinExist 默认总是获取“最近活跃的”那个窗口，完美规避群发并节省流量
         else if WinExist(targetWinTitle) {
             WinActivate(targetWinTitle)
             WinWaitActive(targetWinTitle, , 2)
         } 
-        ; 情况 C: 未打开任何 Gemini，启动全新的
         else {
             Run(geminiLnkPath)
             if !WinWait(targetWinTitle, , 5) {
-                Sleep(1000) ; 如果电脑极度卡顿 5 秒都没出现，做个 1 秒保底等待
+                Sleep(1000) 
             } else {
                 WinActivate(targetWinTitle)
                 WinWaitActive(targetWinTitle, , 2)
             }
         }
         
-        ; 恢复原有匹配模式，以免影响系统其他热键逻辑
         SetTitleMatchMode(oldTitleMatchMode)
         
     } catch {
@@ -434,11 +450,10 @@ TriggerUpload(*) {
         return
     }
     
-    ; --- 确保系统输入焦点并稳定发送内容 ---
-    Sleep(300)      ; 给页面输入框（如 Web 元素）一点获取焦点的微小缓冲时间
-    Send("^v")      ; 触发粘贴
-    Sleep(400)      ; 等待图片渲染/读取完毕，避免网速慢时瞬间被吞
-    Send("{Enter}") ; 提交至网络
+    Sleep(300)      
+    Send("^v")      
+    Sleep(400)      
+    Send("{Enter}") 
 }
 
 ; --- 悬浮窗相关热键 ---
@@ -449,5 +464,5 @@ TriggerUpload(*) {
 }
 
 ~Esc:: {
-    HideFloatingIcon() ; 顺手隐藏图标，避免遮挡
+    HideFloatingIcon() 
 }
