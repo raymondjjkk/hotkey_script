@@ -264,7 +264,7 @@ AutoSaveNotepad() {
 #HotIf
 
 ; ==============================================================================
-; 7. 终极防冲突版：划词选中文本自动复制
+; 7. 终极防冲突版：划词选中文本自动复制 (图片优先放行版)
 ; ==============================================================================
 MIN_DRAG_X       := 35   
 MIN_DRAG_Y       := 45   
@@ -317,10 +317,20 @@ global g_AutoCopy_StartTime := 0
     deltaY := Abs(endY - g_AutoCopy_StartY)
 
     if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
+        
+        ; 🌟 方案 A 核心修复：先等 150 毫秒，给截图软件写入剪贴板的时间
+        Sleep(150)
+        
+        ; 🌟 图片让步逻辑：如果剪贴板当前包含了图片格式，说明刚刚进行了截图操作，直接放弃 AHK 复制介入
+        if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
+         || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
+         || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
+            return 
+        }
+
         priorText := ""
         try priorText := A_Clipboard
 
-        Sleep(50) 
         if GetKeyState("Backspace", "P") || GetKeyState("Delete", "P") || GetKeyState("v", "P")
             return
 
@@ -329,6 +339,7 @@ global g_AutoCopy_StartTime := 0
         Send("^c")
 
         if ClipWait(0.15, 1) {
+            ; 🌟 双重保险：提取剪贴板后，如果是图片格式，说明意外复制了图片，直接放行
             if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
@@ -352,6 +363,7 @@ global g_AutoCopy_StartTime := 0
                 A_Clipboard := oldClip 
             }
         } else {
+            ; 如果获取文本超时且当前剪贴板不是图片，才恢复历史记录
             if !(DllCall("IsClipboardFormatAvailable", "UInt", 2) || DllCall("IsClipboardFormatAvailable", "UInt", 8)) {
                 A_Clipboard := oldClip 
             }
