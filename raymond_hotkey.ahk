@@ -6,6 +6,7 @@ ListLines 0
 ; 0. 全局配置与变量 & GUI 初始化 (Gemini Uploader)
 ; ==========================================
 global isImageReadyToUpload := false
+
 global geminiLnkPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\Gemini.lnk"
 global iconPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\gemini.png"
 
@@ -129,6 +130,7 @@ RegisterMultiTap("r", 3, TripleRAction)
 RegisterMultiTap("y", 3, TripleYAction)
 RegisterMultiTap("e", 3, TripleEAction)
 RegisterMultiTap("a", 3, TripleAAction)
+RegisterMultiTap("g", 4, QuadGAction) ; 🌟 新增：4次g连击
 
 ; ---【多击调用的具体函数】---
 TripleAltAction() {
@@ -181,6 +183,18 @@ TripleAAction() {
     Send("{Backspace 3}")
     SmartRun(anytxtPath)
     Sleep(30)
+}
+
+QuadGAction() {
+    Send("{Backspace 4}") ; 自动擦除输入框里打出的4个g
+    Sleep(30)
+    
+    ; 检查悬浮窗是否就绪
+    if (isImageReadyToUpload) {
+        TriggerUpload()
+    } else {
+        ShowTip("剪贴板中无有效图片")
+    }
 }
 
 ShowTip(text) {
@@ -270,7 +284,7 @@ global g_AutoCopy_StartTime := 0
 ~LButton Up:: {
     global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime
 
-    ; 🌟 保护锁 1：扩展已知截图软件的窗口屏蔽 (加入 Snipaste, PixPin 等)
+    ; 🌟 保护锁 1：扩展已知截图软件的窗口屏蔽
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
     || WinActive("ahk_exe SnippingTool.exe") 
     || WinActive("ahk_exe SnippingToolApp.exe")
@@ -278,7 +292,7 @@ global g_AutoCopy_StartTime := 0
     || WinActive("ahk_exe PixPin.exe")
         return
 
-    ; 🌟 保护锁 2：行为特征拦截！大多数截图软件在选取范围时，鼠标指针都是十字准星
+    ; 🌟 保护锁 2：行为特征拦截！
     if (A_Cursor = "Cross")
         return
 
@@ -314,10 +328,7 @@ global g_AutoCopy_StartTime := 0
         A_Clipboard := ""
         Send("^c")
 
-        ; 🌟 保护锁 3：ClipWait 的参数改为 1(等待任何数据)，防止图片被当成空内容覆盖
         if ClipWait(0.15, 1) {
-            
-            ; 如果在这个节骨眼上，剪贴板里突然出现了图片（说明截图软件刚好写完），立刻悬崖勒马，绝对不去恢复 oldClip！
             if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
@@ -341,7 +352,6 @@ global g_AutoCopy_StartTime := 0
                 A_Clipboard := oldClip 
             }
         } else {
-            ; 即使是超时，在恢复历史剪贴板前，也最后检查一遍有没有图片。保护图片绝对优先。
             if !(DllCall("IsClipboardFormatAvailable", "UInt", 2) || DllCall("IsClipboardFormatAvailable", "UInt", 8)) {
                 A_Clipboard := oldClip 
             }
@@ -375,29 +385,24 @@ RClick_TimeLimit   := 450
 }
 
 ; ==========================================
-; 9. 状态锁定版：剪贴板图片监听与 Gemini 自动上传
+; 9. 状态锁定版：剪贴板图片监听与 Gemini 自动上传 (Vimium 极速对焦版)
 ; ==========================================
 ClipboardChangedHandler(DataType) {
-    ; 🌟 状态锁：DataType 为 0 代表剪贴板被“临时清空”
-    ; 这是截图软件保存数据时的中间操作，我们直接忽略它，不要触发“隐藏图标”的逻辑
     if (DataType == 0)
         return
         
-    ; 给予 150 毫秒的防抖缓冲，让各种程序把剪贴板数据写完整
     SetTimer(CheckClipboardForImage, -150)
 }
 
 CheckClipboardForImage() {
     global isImageReadyToUpload
     
-    ; 检查底层标志位，判断确认为图片
     if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
      || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
      || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
         isImageReadyToUpload := true
         ShowFloatingIcon()
     } else {
-        ; 只有当用户明确复制了“纯文本/代码”等非图片内容时，才撤下悬浮窗
         isImageReadyToUpload := false
         HideFloatingIcon()
     }
@@ -405,7 +410,7 @@ CheckClipboardForImage() {
 
 ShowFloatingIcon() {
     FloatingGui.Show("Center NoActivate")
-    SetTimer(HideFloatingIcon, -10000) ; 10秒不理会它，会自动隐藏
+    SetTimer(HideFloatingIcon, -5000) ; 🌟 修改：5秒后自动隐藏悬浮窗
 }
 
 HideFloatingIcon() {
@@ -419,41 +424,51 @@ TriggerUpload(*) {
     FloatingGui.Hide()
     isImageReadyToUpload := false
     
-    ; --- 智能窗口排他与精准唤醒 ---
     try {
         oldTitleMatchMode := A_TitleMatchMode
-        SetTitleMatchMode(2) ; 🌟 核心修复：改为 2 模糊匹配，标题包含 Gemini 即可，防止由于细微标题改变导致识别不到旧窗口
+        SetTitleMatchMode(2) ; 包含匹配
         
         targetWinTitle := "Gemini ahk_exe chrome.exe"
         
         if WinActive(targetWinTitle) {
-            ; 就地粘贴
+            ; 场景 A: 当前窗口已经是最近使用的 Gemini，直接利用 Vimium
+            Send("{Esc}") ; 先发 Esc 退回正常模式，防止原本就在输入框里打出"gi"
+            Sleep(50)
+            Send("gi")    ; Vimium 极速对焦
+            Sleep(200)    ; 给 Vimium 寻址和聚焦一点缓冲时间
         } 
         else if WinExist(targetWinTitle) {
+            ; 场景 B: 存在未激活的 Gemini 窗口，按系统 Z-order 唤醒最近使用的那一个
             WinActivate(targetWinTitle)
             WinWaitActive(targetWinTitle, , 2)
+            Send("{Esc}")
+            Sleep(50)
+            Send("gi")
+            Sleep(200) 
         } 
         else {
+            ; 场景 C: 完全没有 Gemini 窗口，启动新窗口 (冷启动不需要 Vimium 对焦，且需要留足加载时间)
             Run(geminiLnkPath)
-            if !WinWait(targetWinTitle, , 5) {
-                Sleep(1000) 
-            } else {
+            if WinWait(targetWinTitle, , 5) {
                 WinActivate(targetWinTitle)
                 WinWaitActive(targetWinTitle, , 2)
+                Sleep(2000) ; 首次冷启动需要等待网页加载 DOM 结构完成
+            } else {
+                Sleep(1000) 
             }
         }
         
         SetTitleMatchMode(oldTitleMatchMode)
         
+        ; 此时光标已被 Vimium 精准绑定在输入框内
+        Send("^v")  
+        Sleep(400)  ; 图片在网页端解析也需要几百毫秒，缓冲一下防止回车过早
+        Send("{Enter}") 
+        
     } catch {
         MsgBox("无法启动 Gemini，请检查快捷方式路径：`n" geminiLnkPath, "路径错误", "Iconx")
         return
     }
-    
-    Sleep(300)      
-    Send("^v")      
-    Sleep(400)      
-    Send("{Enter}") 
 }
 
 ; --- 悬浮窗相关热键 ---
