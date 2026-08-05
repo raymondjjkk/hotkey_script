@@ -6,6 +6,7 @@ ListLines 0
 ; 0. 全局配置与变量 & GUI 初始化 (Gemini Uploader)
 ; ==========================================
 global isImageReadyToUpload := false
+global g_ClipboardLastChangeTime := 0 ; 🌟 新增：全局记录剪贴板最后一次发生变化的时间戳
 
 global geminiLnkPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\Gemini.lnk"
 global iconPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\gemini.png"
@@ -130,7 +131,7 @@ RegisterMultiTap("r", 3, TripleRAction)
 RegisterMultiTap("y", 3, TripleYAction)
 RegisterMultiTap("e", 3, TripleEAction)
 RegisterMultiTap("a", 3, TripleAAction)
-RegisterMultiTap("g", 4, QuadGAction) ; 🌟 新增：4次g连击
+RegisterMultiTap("g", 4, QuadGAction)
 
 ; ---【多击调用的具体函数】---
 TripleAltAction() {
@@ -186,10 +187,9 @@ TripleAAction() {
 }
 
 QuadGAction() {
-    Send("{Backspace 4}") ; 自动擦除输入框里打出的4个g
+    Send("{Backspace 4}") 
     Sleep(30)
     
-    ; 检查悬浮窗是否就绪
     if (isImageReadyToUpload) {
         TriggerUpload()
     } else {
@@ -264,7 +264,7 @@ AutoSaveNotepad() {
 #HotIf
 
 ; ==============================================================================
-; 7. 终极防冲突版：划词选中文本自动复制 (图片优先放行版)
+; 7. 终极防冲突版：划词选中文本自动复制 (双重保险完美版)
 ; ==============================================================================
 MIN_DRAG_X       := 35   
 MIN_DRAG_Y       := 45   
@@ -283,8 +283,8 @@ global g_AutoCopy_StartTime := 0
 
 ~LButton Up:: {
     global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime
+    releaseTime := A_TickCount ; 记录鼠标松开的瞬间时间戳
 
-    ; 🌟 保护锁 1：扩展已知截图软件的窗口屏蔽
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
     || WinActive("ahk_exe SnippingTool.exe") 
     || WinActive("ahk_exe SnippingToolApp.exe")
@@ -292,7 +292,6 @@ global g_AutoCopy_StartTime := 0
     || WinActive("ahk_exe PixPin.exe")
         return
 
-    ; 🌟 保护锁 2：行为特征拦截！
     if (A_Cursor = "Cross")
         return
 
@@ -318,16 +317,32 @@ global g_AutoCopy_StartTime := 0
 
     if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
         
-        ; 🌟 方案 A 核心修复：先等 150 毫秒，给截图软件写入剪贴板的时间
-        Sleep(150)
+        ; 🌟 【核心逻辑】动态轮询 400 毫秒，侦测剪贴板是否被外部动过
+        isClipboardBusy := false
+        Loop 10 {
+            Sleep(40) 
+            
+            ; 拦截点 1：底层事件监听，判断在我们松开鼠标后，是否有其他软件碰了剪贴板
+            if (g_ClipboardLastChangeTime > releaseTime) {
+                isClipboardBusy := true
+                break
+            }
+            
+            ; 拦截点 2：直接探查到了图片格式写入（防止某些极端情况监听器时差）
+            if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
+             || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
+             || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
+                isClipboardBusy := true
+                break
+            }
+        }
         
-        ; 🌟 图片让步逻辑：如果剪贴板当前包含了图片格式，说明刚刚进行了截图操作，直接放弃 AHK 复制介入
-        if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
-         || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
-         || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
+        ; 如果剪贴板被碰过，认定为截图或其他操作，直接安全撤退
+        if (isClipboardBusy) {
             return 
         }
 
+        ; 如果 400 毫秒内心如止水，确认是正常划词，开始我们的复制逻辑
         priorText := ""
         try priorText := A_Clipboard
 
@@ -339,7 +354,7 @@ global g_AutoCopy_StartTime := 0
         Send("^c")
 
         if ClipWait(0.15, 1) {
-            ; 🌟 双重保险：提取剪贴板后，如果是图片格式，说明意外复制了图片，直接放行
+            ; 🌟 终极兜底防线：如果在我们发完 Ctrl+C 后，拿到的竟然是图片，说明极小概率下还是撞车了，直接放行
             if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
@@ -363,7 +378,6 @@ global g_AutoCopy_StartTime := 0
                 A_Clipboard := oldClip 
             }
         } else {
-            ; 如果获取文本超时且当前剪贴板不是图片，才恢复历史记录
             if !(DllCall("IsClipboardFormatAvailable", "UInt", 2) || DllCall("IsClipboardFormatAvailable", "UInt", 8)) {
                 A_Clipboard := oldClip 
             }
@@ -400,6 +414,11 @@ RClick_TimeLimit   := 450
 ; 9. 状态锁定版：剪贴板图片监听与 Gemini 自动上传 (Vimium 极速对焦版)
 ; ==========================================
 ClipboardChangedHandler(DataType) {
+    global g_ClipboardLastChangeTime, isImageReadyToUpload
+    
+    ; 🌟 【核心逻辑】：记录下剪贴板变化的精确毫秒级时间，供划词复制功能查询比对
+    g_ClipboardLastChangeTime := A_TickCount
+    
     if (DataType == 0)
         return
         
@@ -422,7 +441,7 @@ CheckClipboardForImage() {
 
 ShowFloatingIcon() {
     FloatingGui.Show("Center NoActivate")
-    SetTimer(HideFloatingIcon, -5000) ; 🌟 修改：5秒后自动隐藏悬浮窗
+    SetTimer(HideFloatingIcon, -5000) 
 }
 
 HideFloatingIcon() {
@@ -443,14 +462,12 @@ TriggerUpload(*) {
         targetWinTitle := "Gemini ahk_exe chrome.exe"
         
         if WinActive(targetWinTitle) {
-            ; 场景 A: 当前窗口已经是最近使用的 Gemini，直接利用 Vimium
-            Send("{Esc}") ; 先发 Esc 退回正常模式，防止原本就在输入框里打出"gi"
+            Send("{Esc}") 
             Sleep(50)
-            Send("gi")    ; Vimium 极速对焦
-            Sleep(200)    ; 给 Vimium 寻址和聚焦一点缓冲时间
+            Send("gi")    
+            Sleep(200)    
         } 
         else if WinExist(targetWinTitle) {
-            ; 场景 B: 存在未激活的 Gemini 窗口，按系统 Z-order 唤醒最近使用的那一个
             WinActivate(targetWinTitle)
             WinWaitActive(targetWinTitle, , 2)
             Send("{Esc}")
@@ -459,12 +476,11 @@ TriggerUpload(*) {
             Sleep(200) 
         } 
         else {
-            ; 场景 C: 完全没有 Gemini 窗口，启动新窗口 (冷启动不需要 Vimium 对焦，且需要留足加载时间)
             Run(geminiLnkPath)
             if WinWait(targetWinTitle, , 5) {
                 WinActivate(targetWinTitle)
                 WinWaitActive(targetWinTitle, , 2)
-                Sleep(2000) ; 首次冷启动需要等待网页加载 DOM 结构完成
+                Sleep(2000) 
             } else {
                 Sleep(1000) 
             }
@@ -472,9 +488,8 @@ TriggerUpload(*) {
         
         SetTitleMatchMode(oldTitleMatchMode)
         
-        ; 此时光标已被 Vimium 精准绑定在输入框内
         Send("^v")  
-        Sleep(400)  ; 图片在网页端解析也需要几百毫秒，缓冲一下防止回车过早
+        Sleep(400)  
         Send("{Enter}") 
         
     } catch {
