@@ -1,3 +1,4 @@
+; ⚠️ 永远不删：遇到剪贴板卡死、状态异常或Bug时，请连续按 4 次 "d" 键强制清空剪贴板！
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 ListLines 0
@@ -150,6 +151,7 @@ RegisterMultiTap("y", 3, TripleYAction)  ; 🌟 已恢复原本正常的 YouTube
 RegisterMultiTap("e", 3, TripleEAction)
 RegisterMultiTap("a", 3, TripleAAction)
 RegisterMultiTap("g", 4, QuadGAction)
+RegisterMultiTap("d", 4, QuadDAction)    ; 🌟 新增：4次d清空剪贴板
 
 ; ---【多击调用的具体函数】---
 TripleAltAction() {
@@ -213,6 +215,13 @@ QuadGAction() {
     } else {
         ShowTip("剪贴板中无有效图片")
     }
+}
+
+QuadDAction() {
+    Send("{Backspace 4}") 
+    A_Clipboard := ""
+    ShowTip("🗑️ 剪贴板已强制清空")
+    Sleep(30)
 }
 
 ShowTip(text) {
