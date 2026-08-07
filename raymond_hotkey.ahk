@@ -3,28 +3,46 @@
 ListLines 0
 
 ; ==========================================
-; 0. 全局配置与变量 & GUI 初始化 (Gemini Uploader)
+; 0. 全局配置与变量 & GUI 初始化
 ; ==========================================
 global isImageReadyToUpload := false
-global g_ClipboardLastChangeTime := 0 ; 🌟 新增：全局记录剪贴板最后一次发生变化的时间戳
+global isTextReadyToSearch := false
+global g_ClipboardLastChangeTime := 0 
 
+; 路径配置
 global geminiLnkPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\Gemini.lnk"
 global iconPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\gemini.png"
 
-; 创建悬浮窗 UI
+global youglishIconPath := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\youglish_auto_load.png"
+
+; --- Gemini 悬浮窗 ---
 global FloatingGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "GeminiUploader")
 FloatingGui.BackColor := "EEAA99"  
-WinSetTransColor("EEAA99", FloatingGui) ; 背景透明抠图，实现真正的无边框悬浮
+WinSetTransColor("EEAA99", FloatingGui) 
 
-; 启动前检测：如果没找到图片，会弹窗提醒
 if !FileExist(iconPath) {
     MsgBox("未能找到图片！`n`n请确保路径正确：`n" iconPath, "缺少文件", "Iconx")
     ExitApp()
 }
-
-; 渲染精致小巧的 48x48 悬浮图标
 iconBtn := FloatingGui.Add("Picture", "w48 h48 BackgroundTrans", iconPath)
 iconBtn.OnEvent("Click", TriggerUpload)
+
+; --- YouGlish 悬浮窗 ---
+global YouGlishGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "YouGlishUploader")
+YouGlishGui.BackColor := "EEAA99"
+WinSetTransColor("EEAA99", YouGlishGui)
+
+if !FileExist(youglishIconPath) {
+    MsgBox("未能找到 YouGlish 图片！`n`n请确保路径正确：`n" youglishIconPath, "缺少文件", "Iconx")
+} else {
+    ; 🌟 核心修改：高度固定为 48，宽度设为 -1 让它按原图比例自适应缩放
+    global ygIconBtn := YouGlishGui.Add("Picture", "h48 w-1 BackgroundTrans", youglishIconPath)
+    ygIconBtn.OnEvent("Click", TriggerYouGlish)
+
+    ; 获取缩放后的真实宽高，用于后续计算精准坐标
+    global ygIconWidth := 0, ygIconHeight := 0
+    ygIconBtn.GetPos(,, &ygIconWidth, &ygIconHeight)
+}
 
 ; 监听剪贴板变化
 OnClipboardChange(ClipboardChangedHandler)
@@ -38,7 +56,7 @@ if (A_Args.Length > 0 && A_Args[1] == "/reloaded") {
 
 #HotIf WinActive(A_ScriptName)
 ~^s:: {
-    Sleep(200) ; 留出 200ms 给磁盘完成写入
+    Sleep(200) 
     Run('"' . A_AhkPath . '" "' . A_ScriptFullPath . '" /reloaded')
     ExitApp()
 }
@@ -70,7 +88,7 @@ GeminiPath   := AppDir "gemini.lnk"
 DouYinPath   := AppDir "抖音.lnk"
 YoutubePath  := AppDir "YouTube.lnk"
 bilibiliPath := AppDir "bilibili.lnk"
-youglishPath := AppDir "youglish.lnk"
+global youglishPath := AppDir "youglish.lnk"
 chromePath   := "C:\Program Files\Google\Chrome\Application\chrome.exe"
 wpsPath      := AppDir "WPS听记.lnk"
 wxsrfPath    := AppDir "微信输入法.lnk"
@@ -128,7 +146,7 @@ RegisterMultiTap("Space", 4, QuadSpaceAction)
 RegisterMultiTap("n", 5, PentaNAction)
 RegisterMultiTap("z", 3, TripleZAction)
 RegisterMultiTap("r", 3, TripleRAction)
-RegisterMultiTap("y", 3, TripleYAction)
+RegisterMultiTap("y", 3, TripleYAction)  ; 🌟 已恢复原本正常的 YouTube 唤醒
 RegisterMultiTap("e", 3, TripleEAction)
 RegisterMultiTap("a", 3, TripleAAction)
 RegisterMultiTap("g", 4, QuadGAction)
@@ -170,7 +188,7 @@ TripleRAction() {
 
 TripleYAction() {
     Send("{Backspace 3}")
-    SmartRun(YouTubePath)
+    SmartRun(YoutubePath) ; 🌟 恢复 YouTube 路径调用
     Sleep(30)
 }
 
@@ -282,8 +300,8 @@ global g_AutoCopy_StartTime := 0
 }
 
 ~LButton Up:: {
-    global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime
-    releaseTime := A_TickCount ; 记录鼠标松开的瞬间时间戳
+    global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime, isTextReadyToSearch
+    releaseTime := A_TickCount 
 
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
     || WinActive("ahk_exe SnippingTool.exe") 
@@ -317,18 +335,15 @@ global g_AutoCopy_StartTime := 0
 
     if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
         
-        ; 🌟 【核心逻辑】动态轮询 400 毫秒，侦测剪贴板是否被外部动过
         isClipboardBusy := false
         Loop 10 {
             Sleep(40) 
             
-            ; 拦截点 1：底层事件监听，判断在我们松开鼠标后，是否有其他软件碰了剪贴板
             if (g_ClipboardLastChangeTime > releaseTime) {
                 isClipboardBusy := true
                 break
             }
             
-            ; 拦截点 2：直接探查到了图片格式写入（防止某些极端情况监听器时差）
             if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
@@ -337,12 +352,10 @@ global g_AutoCopy_StartTime := 0
             }
         }
         
-        ; 如果剪贴板被碰过，认定为截图或其他操作，直接安全撤退
         if (isClipboardBusy) {
             return 
         }
 
-        ; 如果 400 毫秒内心如止水，确认是正常划词，开始我们的复制逻辑
         priorText := ""
         try priorText := A_Clipboard
 
@@ -354,7 +367,6 @@ global g_AutoCopy_StartTime := 0
         Send("^c")
 
         if ClipWait(0.15, 1) {
-            ; 🌟 终极兜底防线：如果在我们发完 Ctrl+C 后，拿到的竟然是图片，说明极小概率下还是撞车了，直接放行
             if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
@@ -372,8 +384,11 @@ global g_AutoCopy_StartTime := 0
                 return
             }
 
+            ; 捕获纯文本，触发 YouGlish 悬浮窗
             if (trimmedText != "" && trimmedText != priorText) {
                 ShowTip("Copied")
+                isTextReadyToSearch := true
+                ShowYouGlishIcon()
             } else {
                 A_Clipboard := oldClip 
             }
@@ -411,12 +426,11 @@ RClick_TimeLimit   := 450
 }
 
 ; ==========================================
-; 9. 状态锁定版：剪贴板图片监听与 Gemini 自动上传 (Vimium 极速对焦版)
+; 9. 状态锁定版：剪贴板图片监听与 Gemini 自动上传 
 ; ==========================================
 ClipboardChangedHandler(DataType) {
     global g_ClipboardLastChangeTime, isImageReadyToUpload
     
-    ; 🌟 【核心逻辑】：记录下剪贴板变化的精确毫秒级时间，供划词复制功能查询比对
     g_ClipboardLastChangeTime := A_TickCount
     
     if (DataType == 0)
@@ -440,8 +454,22 @@ CheckClipboardForImage() {
 }
 
 ShowFloatingIcon() {
-    FloatingGui.Show("Center NoActivate")
-    SetTimer(HideFloatingIcon, -5000) 
+    ; 🌟 解决副屏漂移：强制获取跨显示器的全局绝对坐标
+    oldCoordMode := A_CoordModeMouse
+    CoordMode("Mouse", "Screen")
+    
+    MouseGetPos(&mouseX, &mouseY)
+    
+    ; 恢复坐标模式
+    CoordMode("Mouse", oldCoordMode) 
+    
+    ; 动态计算：鼠标右下方 45°，距离 50 像素 (X 和 Y 各偏移 35 像素)
+    showX := mouseX + 35
+    showY := mouseY + 35
+    
+    FloatingGui.Show("x" showX " y" showY " NoActivate")
+    WinSetAlwaysOnTop(1, FloatingGui.Hwnd) ; 强制置顶，防止被新窗口遮挡
+    SetTimer(HideFloatingIcon, -3000) 
 }
 
 HideFloatingIcon() {
@@ -457,7 +485,7 @@ TriggerUpload(*) {
     
     try {
         oldTitleMatchMode := A_TitleMatchMode
-        SetTitleMatchMode(2) ; 包含匹配
+        SetTitleMatchMode(2) 
         
         targetWinTitle := "Gemini ahk_exe chrome.exe"
         
@@ -498,7 +526,93 @@ TriggerUpload(*) {
     }
 }
 
-; --- 悬浮窗相关热键 ---
+; ==========================================
+; 10. YouGlish 划词搜索及自动触发 (Vimium 联动)
+; ==========================================
+
+; 🌟 新增：Ctrl+Shift+Y 直接触发 YouGlish
+^+y::TriggerYouGlish()
+
+ShowYouGlishIcon() {
+    ; 🌟 解决副屏漂移的核心：强制获取跨显示器的全局绝对坐标
+    oldCoordMode := A_CoordModeMouse
+    CoordMode("Mouse", "Screen")
+    
+    MouseGetPos(&mouseX, &mouseY)
+    
+    ; 恢复之前的坐标模式，避免影响脚本中的其他划词功能
+    CoordMode("Mouse", oldCoordMode) 
+    
+    ; 动态计算：在鼠标左侧 50 像素，并扣除图片真实宽度，高度居中
+    showX := mouseX - 50 - ygIconWidth
+    showY := mouseY - (ygIconHeight / 2)
+    
+    YouGlishGui.Show("x" showX " y" showY " NoActivate")
+    WinSetAlwaysOnTop(1, YouGlishGui.Hwnd) ; 置顶防遮挡
+    SetTimer(HideYouGlishIcon, -2000)
+}
+
+HideYouGlishIcon() {
+    YouGlishGui.Hide()
+}
+
+TriggerYouGlish(*) {
+    global isTextReadyToSearch, youglishPath
+    
+    SetTimer(HideYouGlishIcon, 0)
+    YouGlishGui.Hide()
+    isTextReadyToSearch := false
+    
+    try {
+        oldTitleMatchMode := A_TitleMatchMode
+        SetTitleMatchMode(2) 
+        
+        targetWinTitle := "youglish ahk_exe chrome.exe"
+        
+        if WinActive(targetWinTitle) {
+            Send("{Esc}")
+            Sleep(50)
+            Send("gi")
+            Sleep(200)
+        } 
+        else if WinExist(targetWinTitle) {
+            WinActivate(targetWinTitle)
+            WinWaitActive(targetWinTitle, , 2)
+            Send("{Esc}")
+            Sleep(50)
+            Send("gi")
+            Sleep(200)
+        } 
+        else {
+            Run(youglishPath)
+            if WinWait(targetWinTitle, , 5) {
+                WinActivate(targetWinTitle)
+                WinWaitActive(targetWinTitle, , 2)
+                Sleep(1500) 
+                Send("{Esc}")
+                Sleep(50)
+                Send("gi")
+                Sleep(200)
+            } else {
+                Sleep(1000)
+            }
+        }
+        
+        SetTitleMatchMode(oldTitleMatchMode)
+        
+        Send("^a")  
+        Sleep(50)
+        Send("^v")  
+        Sleep(400)
+        Send("{Enter}") 
+        
+    } catch {
+        MsgBox("无法启动 YouGlish，请检查快捷方式路径：`n" youglishPath, "路径错误", "Iconx")
+        return
+    }
+}
+
+; --- 全局清理悬浮窗快捷键 ---
 #+g:: {
     if (isImageReadyToUpload) {
         TriggerUpload()
@@ -507,4 +621,5 @@ TriggerUpload(*) {
 
 ~Esc:: {
     HideFloatingIcon() 
+    HideYouGlishIcon()
 }
