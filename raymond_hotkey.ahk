@@ -9,6 +9,7 @@ ListLines 0
 global isImageReadyToUpload := false
 global isTextReadyToSearch := false
 global g_ClipboardLastChangeTime := 0 
+global g_LastImageCopyTime := 0  ; 🌟 新增：记录最后一次复制图片的时间
 
 ; 路径配置
 global geminiLnkPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\Gemini.lnk"
@@ -291,7 +292,7 @@ AutoSaveNotepad() {
 #HotIf
 
 ; ==============================================================================
-; 7. 终极防冲突版：划词选中文本自动复制 (双重保险完美版)
+; 7. 终极防冲突版：划词选中文本自动复制 (完美整合 8秒防误触保护)
 ; ==============================================================================
 MIN_DRAG_X       := 35   
 MIN_DRAG_Y       := 45   
@@ -309,7 +310,7 @@ global g_AutoCopy_StartTime := 0
 }
 
 ~LButton Up:: {
-    global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime, isTextReadyToSearch
+    global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime, isTextReadyToSearch, g_LastImageCopyTime
     releaseTime := A_TickCount 
 
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
@@ -344,18 +345,17 @@ global g_AutoCopy_StartTime := 0
 
     if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
         
+        ; 🌟 核心防误触保护：如果刚复制完图片，8 秒内禁用划词自动复制，保护图片不被破坏
+        if (g_LastImageCopyTime > 0 && (A_TickCount - g_LastImageCopyTime) < 8000) {
+            return
+        }
+        
+        ; 🌟 优化性能并修复曾经无限阻塞的 Bug
         isClipboardBusy := false
-        Loop 10 {
+        Loop 2 {
             Sleep(40) 
             
             if (g_ClipboardLastChangeTime > releaseTime) {
-                isClipboardBusy := true
-                break
-            }
-            
-            if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
-             || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
-             || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
                 isClipboardBusy := true
                 break
             }
@@ -449,15 +449,17 @@ ClipboardChangedHandler(DataType) {
 }
 
 CheckClipboardForImage() {
-    global isImageReadyToUpload
+    global isImageReadyToUpload, g_LastImageCopyTime
     
     if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
      || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
      || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
         isImageReadyToUpload := true
+        g_LastImageCopyTime := A_TickCount ; 🌟 记录图片进入剪贴板的瞬间
         ShowFloatingIcon()
     } else {
         isImageReadyToUpload := false
+        g_LastImageCopyTime := 0           ; 🌟 剪贴板已换成纯文本或其他内容，立刻解除 8 秒保护盾
         HideFloatingIcon()
     }
 }
