@@ -79,9 +79,9 @@ if (A_Args.Length > 0 && A_Args[1] == "/reloaded") {
 ; 1. 基础快捷键映射
 ; ==============================================================================
 F1::Send("^z")
-F3::Send("^c")
-F4::Send("^v")
-F5::Send("^a")
+F3::Send("^v")
+F4::Send("^a")
+F5::Send("^c")
 F6::Send("!q")
 F8::SendLevel(1), Send("^+8")
 F9::Send("^+9")
@@ -684,3 +684,27 @@ $LButton:: {
     }
 }
 #HotIf
+
+; ==============================================================================
+; 11. 窗口管理区 (Window Management)
+; ==============================================================================
+; 按下 Win + J 键，强制恢复所有最小化的窗口
+#j:: {
+    ; 获取所有窗口的 ID 列表 (排除系统基础界面)
+    idList := WinGetList(,, "Program Manager")
+    
+    ; 遍历所有窗口
+    for this_id in idList {
+        ; 检查窗口当前的状态 (-1 代表最小化)
+        minmax := WinGetMinMax(this_id)
+        
+        if (minmax == -1) {
+            ; 获取窗口标题，排除没有标题的幽灵进程
+            this_title := WinGetTitle(this_id)
+            if (this_title != "") {
+                ; 强制恢复窗口
+                WinRestore(this_id)
+            }
+        }
+    }
+}
