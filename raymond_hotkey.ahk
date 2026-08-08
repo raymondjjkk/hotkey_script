@@ -39,7 +39,7 @@ if !FileExist(youglishIconPath) {
     MsgBox("未能找到 YouGlish 图片！`n`n请确保路径正确：`n" youglishIconPath, "缺少文件", "Iconx")
 } else {
     ; 高度缩小至 44（原48），宽度自适应按原图比例缩放
-    global ygIconBtn := YouGlishGui.Add("Picture", "h44 w-1 BackgroundTrans", youglishIconPath)
+    global ygIconBtn := YouGlishGui.Add("Picture", "h32 w-1 BackgroundTrans", youglishIconPath)
     ygIconBtn.OnEvent("Click", TriggerYouGlish)
     
     ; 获取缩放后的真实宽高，用于精准计算定位坐标
@@ -79,8 +79,8 @@ if (A_Args.Length > 0 && A_Args[1] == "/reloaded") {
 ; 1. 基础快捷键映射
 ; ==============================================================================
 F1::Send("^z")
-F3::Send("^v")
-F4::Send("^c")
+F3::Send("^c")
+F4::Send("^v")
 F5::Send("^a")
 F6::Send("!q")
 F8::SendLevel(1), Send("^+8")
@@ -293,8 +293,8 @@ AutoSaveNotepad() {
 ; ==============================================================================
 MIN_DRAG_X       := 35   
 MIN_DRAG_Y       := 45   
-MAX_DRAG_TIME_MS := 1500 
-MIN_DRAG_TIME_MS := 80   
+MAX_DRAG_TIME_MS := 15000 
+MIN_DRAG_TIME_MS := 50   
 
 global g_AutoCopy_StartX := 0
 global g_AutoCopy_StartY := 0
@@ -535,12 +535,12 @@ ShowYouGlishIcon() {
     CoordMode("Mouse", oldCoordMode) 
     
     ; 计算定位：位于鼠标左侧 50 像素，结合图片实际宽度水平对齐，垂直居中
-    showX := mouseX - 50 - ygIconWidth
-    showY := mouseY - (ygIconHeight / 2)
+    showX := mouseX - 30 - ygIconWidth
+    showY := mouseY +15 - (ygIconHeight / 2)
     
     YouGlishGui.Show("x" showX " y" showY " NoActivate")
     WinSetAlwaysOnTop(1, YouGlishGui.Hwnd)
-    SetTimer(HideYouGlishIcon, -5000)
+    SetTimer(HideYouGlishIcon, -3000)
 }
 
 HideYouGlishIcon() {
@@ -603,7 +603,7 @@ TriggerYouGlish(*) {
     }
 }
 
-; 🌟 已按需求修改：定位到鼠标右侧 15 像素、Y 轴向上偏移 5 像素（下5像素方向微调）
+
 ShowCopiedIcon() {
     oldCoordMode := A_CoordModeMouse
     CoordMode("Mouse", "Screen")
@@ -612,8 +612,8 @@ ShowCopiedIcon() {
     CoordMode("Mouse", oldCoordMode) 
     
     ; 动态坐标计算
-    showX := mouseX - 20
-    showY := mouseY +20
+    showX := mouseX -5
+    showY := mouseY -2
     
     CopiedGui.Show("x" showX " y" showY " NoActivate")
     WinSetAlwaysOnTop(1, CopiedGui.Hwnd)
