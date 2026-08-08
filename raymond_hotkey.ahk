@@ -1,27 +1,25 @@
-; ⚠️ 永远不删：遇到剪贴板卡死、状态异常或Bug时，请连续按 4 次 "d" 键强制清空剪贴板！
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 ListLines 0
 
-; ==========================================
-; 0. 全局配置与变量 & GUI 初始化
-; ==========================================
+; ==============================================================================
+; 0. 全局配置、变量初始化与 GUI 创建
+; ==============================================================================
 global isImageReadyToUpload := false
 global isTextReadyToSearch := false
 global g_ClipboardLastChangeTime := 0 
-global g_LastImageCopyTime := 0  ; 🌟 新增：记录最后一次复制图片的时间
+global g_LastImageCopyTime := 0  ; 记录最近一次复制图片的时间戳
 
 ; 路径配置
-global geminiLnkPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\Gemini.lnk"
-global iconPath := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\gemini.png"
-
+global geminiLnkPath   := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\Gemini.lnk"
+global iconPath        := "C:\Users\Raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\gemini.png"
 global youglishIconPath := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\youglish_auto_load.png"
+global copiedIconPath  := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\copied.png"
 
 ; --- Gemini 悬浮窗 ---
 global FloatingGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "GeminiUploader")
 FloatingGui.BackColor := "EEAA99"  
 WinSetTransColor("EEAA99", FloatingGui) 
-
 if !FileExist(iconPath) {
     MsgBox("未能找到图片！`n`n请确保路径正确：`n" iconPath, "缺少文件", "Iconx")
     ExitApp()
@@ -33,29 +31,38 @@ iconBtn.OnEvent("Click", TriggerUpload)
 global YouGlishGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "YouGlishUploader")
 YouGlishGui.BackColor := "EEAA99"
 WinSetTransColor("EEAA99", YouGlishGui)
-
 if !FileExist(youglishIconPath) {
     MsgBox("未能找到 YouGlish 图片！`n`n请确保路径正确：`n" youglishIconPath, "缺少文件", "Iconx")
 } else {
-    ; 🌟 核心修改：高度固定为 48，宽度设为 -1 让它按原图比例自适应缩放
-    global ygIconBtn := YouGlishGui.Add("Picture", "h48 w-1 BackgroundTrans", youglishIconPath)
+    ; 高度缩小至 44（原48），宽度自适应按原图比例缩放
+    global ygIconBtn := YouGlishGui.Add("Picture", "h44 w-1 BackgroundTrans", youglishIconPath)
     ygIconBtn.OnEvent("Click", TriggerYouGlish)
-
-    ; 获取缩放后的真实宽高，用于后续计算精准坐标
+    
+    ; 获取缩放后的真实宽高，用于精准计算定位坐标
     global ygIconWidth := 0, ygIconHeight := 0
     ygIconBtn.GetPos(,, &ygIconWidth, &ygIconHeight)
+}
+
+; --- Copied 提示悬浮窗 ---
+global CopiedGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "CopiedIcon")
+CopiedGui.BackColor := "EEAA99"
+WinSetTransColor("EEAA99", CopiedGui)
+if !FileExist(copiedIconPath) {
+    MsgBox("未能找到 Copied 图片！`n`n请确保路径正确：`n" copiedIconPath, "缺少文件", "Iconx")
+} else {
+    ; 高度 37，宽度按原比例自适应
+    CopiedGui.Add("Picture", "h37 w-1 BackgroundTrans", copiedIconPath)
 }
 
 ; 监听剪贴板变化
 OnClipboardChange(ClipboardChangedHandler)
 
-; ==========================================
-; 开发辅助：在编辑器中按 Ctrl+S 保存脚本时自动重新加载
-; ==========================================
+; ==============================================================================
+; 开发辅助：在编辑器中按 Ctrl+S 保存脚本时自动热重载
+; ==============================================================================
 if (A_Args.Length > 0 && A_Args[1] == "/reloaded") {
     ShowTip("Script successfully reloaded")
 }
-
 #HotIf WinActive(A_ScriptName)
 ~^s:: {
     Sleep(200) 
@@ -64,9 +71,9 @@ if (A_Args.Length > 0 && A_Args[1] == "/reloaded") {
 }
 #HotIf
 
-; ==========================================
-; 1. 基础快捷键 
-; ==========================================
+; ==============================================================================
+; 1. 基础快捷键映射
+; ==============================================================================
 F1::Send("^z")
 F3::Send("^v")
 F4::Send("^c")
@@ -77,37 +84,34 @@ F9::Send("^+9")
 F10::Send("^+p")
 F11::Send("^w")
 F12::Send("^+{Esc}")
-
 End::Send("#+{Right}")
 PgUp::Send("^{Enter}")
 PgDn::Send("^v")
 
-; ==========================================
-; 2. 软件快捷启动
-; ==========================================
-AppDir       := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\"
-GeminiPath   := AppDir "gemini.lnk"
-DouYinPath   := AppDir "抖音.lnk"
-YoutubePath  := AppDir "YouTube.lnk"
-bilibiliPath := AppDir "bilibili.lnk"
+; ==============================================================================
+; 2. 应用程序快捷启动映射
+; ==============================================================================
+AppDir          := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\"
+GeminiPath      := AppDir "gemini.lnk"
+DouYinPath      := AppDir "抖音.lnk"
+YoutubePath     := AppDir "YouTube.lnk"
+bilibiliPath    := AppDir "bilibili.lnk"
 global youglishPath := AppDir "youglish.lnk"
-chromePath   := "C:\Program Files\Google\Chrome\Application\chrome.exe"
-wpsPath      := AppDir "WPS听记.lnk"
-wxsrfPath    := AppDir "微信输入法.lnk"
-telegramPath := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\Telegram Desktop\Telegram.exe"
-zhihuPath    := AppDir "知乎.lnk"
-redditPath   := AppDir "Reddit.lnk"
-ethernetPath := AppDir "Toggle_Ethernet.bat"
-;===========================================
-shutdownPath := AppDir "shutdown_30second.bat"
-restartPath  := AppDir "restart_30second.bat"
-;===========================================
-notepadPath  := "C:\WINDOWS\notepad.exe"
+chromePath      := "C:\Program Files\Google\Chrome\Application\chrome.exe"
+wpsPath         := AppDir "WPS听记.lnk"
+wxsrfPath       := AppDir "微信输入法.lnk"
+telegramPath    := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\Telegram Desktop\Telegram.exe"
+zhihuPath       := AppDir "知乎.lnk"
+redditPath      := AppDir "Reddit.lnk"
+ethernetPath    := AppDir "Toggle_Ethernet.bat"
+shutdownPath    := AppDir "shutdown_30second.bat"
+restartPath     := AppDir "restart_30second.bat"
+notepadPath     := "C:\WINDOWS\notepad.exe"
 screentogifPath := "C:\Program Files\WindowsApps\33823Nicke.ScreenToGif_2.43.2.0_x64__99xjgbc30gqtw\ScreenToGif.exe"
-everythingPath := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\Everything\Everything.exe"
-anytxtPath := "C:\Program Files\Anytxt Searcher\ATGUI.exe"
-;===========================================
+everythingPath  := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\Everything\Everything.exe"
+anytxtPath      := "C:\Program Files\Anytxt Searcher\ATGUI.exe"
 
+; 数字键联动组合键启动
 ` & 1::SmartRun(chromePath)
 ` & 2::SmartRun(GeminiPath)
 ` & 3::SmartRun(wpsPath)
@@ -119,9 +123,7 @@ anytxtPath := "C:\Program Files\Anytxt Searcher\ATGUI.exe"
 ` & 9::SmartRun(restartPath)
 ` & 0::SmartRun(shutdownPath)
 
-;================================
-; 字母区软件快捷启动
-;================================
+; 字母键联动组合键启动
 ` & n::SmartRun(ethernetPath)
 ` & g::SmartRun(screentogifPath)
 
@@ -133,28 +135,28 @@ SmartRun(Path) {
     }
 }
 
-; ==========================================
-; 3. 核心修复：强制恢复反引号和波浪线
-; ==========================================
+; ==============================================================================
+; 3. 基础按键恢复（消除组合键后对原按键输入的影响）
+; ==============================================================================
 `::SendText("``")
 +`::SendText("~")
 
 ; ==============================================================================
-; 4. 系统化【多击按键】注册配置区
-; ==========================================
+; 4. 系统化【多击按键】注册与触发响应区
+; ==============================================================================
 RegisterMultiTap("LAlt", 3, TripleAltAction)  
 RegisterMultiTap("RAlt", 3, TripleAltAction)  
 RegisterMultiTap("Space", 4, QuadSpaceAction)
 RegisterMultiTap("n", 5, PentaNAction)
 RegisterMultiTap("z", 3, TripleZAction)
 RegisterMultiTap("r", 3, TripleRAction)
-RegisterMultiTap("y", 3, TripleYAction)  ; 🌟 已恢复原本正常的 YouTube 唤醒
+RegisterMultiTap("y", 3, TripleYAction)  
 RegisterMultiTap("e", 3, TripleEAction)
 RegisterMultiTap("a", 3, TripleAAction)
 RegisterMultiTap("g", 4, QuadGAction)
-RegisterMultiTap("d", 4, QuadDAction)    ; 🌟 新增：4次d清空剪贴板
+RegisterMultiTap("d", 4, QuadDAction)  ; 紧急恢复：清空剪贴板
 
-; ---【多击调用的具体函数】---
+; ---【多击触发的具体执行函数】---
 TripleAltAction() {
     Send("{Control}")     
     Send("^v")            
@@ -191,7 +193,7 @@ TripleRAction() {
 
 TripleYAction() {
     Send("{Backspace 3}")
-    SmartRun(YoutubePath) ; 🌟 恢复 YouTube 路径调用
+    SmartRun(YoutubePath)
     Sleep(30)
 }
 
@@ -230,13 +232,12 @@ ShowTip(text) {
     SetTimer(() => ToolTip(), -1000)
 }
 
-; ==========================================
-; 5. 多击逻辑的核心通用引擎
-; ==========================================
+; ==============================================================================
+; 5. 多击检测核心引擎（通用回调处理）
+; ==============================================================================
 RegisterMultiTap(key, targetCount, callback, maxSpeedInterval := 200) {
     static stateMap := Map()
     stateMap[key] := { count: 0, lastTime: 0, triggered: false }
-
     Hotkey("~" . key, (*) => ProcessTap(key, targetCount, callback, maxSpeedInterval))
 
     ProcessTap(k, target, cb, maxSpeed) {
@@ -262,9 +263,9 @@ RegisterMultiTap(key, targetCount, callback, maxSpeedInterval := 200) {
     }
 }
 
-; ==========================================
-; 6. Windows 11 记事本智能静默自动保存
-; ==========================================
+; ==============================================================================
+; 6. Win11 记事本静默自动保存机制
+; ==============================================================================
 #HotIf WinActive("ahk_class Notepad") || WinActive("ahk_exe Notepad.exe")
 SetTimer AutoSaveNotepad, 3000
 
@@ -292,7 +293,7 @@ AutoSaveNotepad() {
 #HotIf
 
 ; ==============================================================================
-; 7. 终极防冲突版：划词选中文本自动复制 (完美整合 8秒防误触保护)
+; 7. 划词选中文本自动复制（带 8秒图片保护机制与误触防拦截）
 ; ==============================================================================
 MIN_DRAG_X       := 35   
 MIN_DRAG_Y       := 45   
@@ -313,6 +314,7 @@ global g_AutoCopy_StartTime := 0
     global g_AutoCopy_StartX, g_AutoCopy_StartY, g_AutoCopy_StartTime, isTextReadyToSearch, g_LastImageCopyTime
     releaseTime := A_TickCount 
 
+    ; 特殊窗口/工具中禁用划词复制
     if WinActive("ahk_class Windows.UI.Core.CoreWindow") 
     || WinActive("ahk_exe SnippingTool.exe") 
     || WinActive("ahk_exe SnippingToolApp.exe")
@@ -320,17 +322,21 @@ global g_AutoCopy_StartTime := 0
     || WinActive("ahk_exe PixPin.exe")
         return
 
+    ; 截图或特殊光标状态下禁用
     if (A_Cursor = "Cross")
         return
 
+    ; Chrome 顶部标签页区域禁用
     if WinActive("ahk_exe chrome.exe") && (g_AutoCopy_StartY < 120)
         return
 
+    ; VS Code 侧边栏/顶部标题栏禁用
     if WinActive("ahk_exe Code.exe") {
         if (g_AutoCopy_StartX < 80 || g_AutoCopy_StartY < 70)
             return
     }
 
+    ; 修饰键按下时禁用
     if GetKeyState("Shift", "P") || GetKeyState("Ctrl", "P") || GetKeyState("Alt", "P")
         return
 
@@ -345,12 +351,12 @@ global g_AutoCopy_StartTime := 0
 
     if (deltaX > MIN_DRAG_X || deltaY > MIN_DRAG_Y) {
         
-        ; 🌟 核心防误触保护：如果刚复制完图片，8 秒内禁用划词自动复制，保护图片不被破坏
+        ; 防误触保护：若 8 秒内曾复制过图片，屏蔽划词复制以保护剪贴板图像
         if (g_LastImageCopyTime > 0 && (A_TickCount - g_LastImageCopyTime) < 8000) {
             return
         }
         
-        ; 🌟 优化性能并修复曾经无限阻塞的 Bug
+        ; 检查剪贴板竞争状态
         isClipboardBusy := false
         Loop 2 {
             Sleep(40) 
@@ -376,48 +382,60 @@ global g_AutoCopy_StartTime := 0
         Send("^c")
 
         if ClipWait(0.15, 1) {
+            ; 1. 过滤文件及文件夹拖拽 (CF_HDROP = 15)
+            if DllCall("IsClipboardFormatAvailable", "UInt", 15) {
+                A_Clipboard := oldClip
+                return
+            }
+
+            ; 2. 过滤图像格式 (CF_BITMAP=2, CF_DIB=8, CF_DIBV5=17)
             if (DllCall("IsClipboardFormatAvailable", "UInt", 2) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
              || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
                 return 
             }
 
+            ; 3. 处理文本数据并清洗空白字符
             currentText := A_Clipboard
-            trimmedText := Trim(currentText)
+            trimmedText := Trim(currentText, " `t`r`n") 
 
+            if (trimmedText == "") {
+                A_Clipboard := oldClip
+                return
+            }
+
+            ; 单行划词但包含换行符时取消复制
             isSingleLineDrag := (deltaY < 25)
             hasNewline := InStr(currentText, "`n") || InStr(currentText, "`r")
-
             if (isSingleLineDrag && hasNewline) {
                 A_Clipboard := oldClip
                 return
             }
 
-            ; 捕获纯文本，触发 YouGlish 悬浮窗
-            if (trimmedText != "" && trimmedText != priorText) {
-                ShowTip("Copied")
+            ; 成功提取有效文本，触发 Copied 悬浮提示与 YouGlish 按钮
+            if (trimmedText != priorText) {
+                ShowCopiedIcon()
                 isTextReadyToSearch := true
                 ShowYouGlishIcon()
             } else {
                 A_Clipboard := oldClip 
             }
         } else {
-            if !(DllCall("IsClipboardFormatAvailable", "UInt", 2) || DllCall("IsClipboardFormatAvailable", "UInt", 8)) {
-                A_Clipboard := oldClip 
-            }
+            A_Clipboard := oldClip
         }
     }
 }
 
 ; ==============================================================================
-; 8. 鼠标右键连击触发粘贴
-; ==========================================
+; 8. 鼠标右键三连击快捷粘贴
+; ==============================================================================
 RClick_TargetCount := 3
 RClick_TimeLimit   := 450
 
 ~RButton:: {
     static lastTime := 0
     static clickCount := 0
+
     now := A_TickCount
     if (now - lastTime > RClick_TimeLimit) {
         clickCount := 1
@@ -425,6 +443,7 @@ RClick_TimeLimit   := 450
         clickCount++
     }
     lastTime := now
+
     if (clickCount >= RClick_TargetCount) {
         clickCount := 0
         Send("^v")
@@ -434,9 +453,9 @@ RClick_TimeLimit   := 450
     }
 }
 
-; ==========================================
-; 9. 状态锁定版：剪贴板图片监听与 Gemini 自动上传 
-; ==========================================
+; ==============================================================================
+; 9. 剪贴板图像监听与 Gemini 自动上传处理
+; ==============================================================================
 ClipboardChangedHandler(DataType) {
     global g_ClipboardLastChangeTime, isImageReadyToUpload
     
@@ -455,31 +474,28 @@ CheckClipboardForImage() {
      || DllCall("IsClipboardFormatAvailable", "UInt", 8) 
      || DllCall("IsClipboardFormatAvailable", "UInt", 17)) {
         isImageReadyToUpload := true
-        g_LastImageCopyTime := A_TickCount ; 🌟 记录图片进入剪贴板的瞬间
+        g_LastImageCopyTime := A_TickCount
         ShowFloatingIcon()
     } else {
         isImageReadyToUpload := false
-        g_LastImageCopyTime := 0           ; 🌟 剪贴板已换成纯文本或其他内容，立刻解除 8 秒保护盾
+        g_LastImageCopyTime := 0  ; 清除图片时间戳，立即解除 8 秒保护
         HideFloatingIcon()
     }
 }
 
 ShowFloatingIcon() {
-    ; 🌟 解决副屏漂移：强制获取跨显示器的全局绝对坐标
     oldCoordMode := A_CoordModeMouse
     CoordMode("Mouse", "Screen")
     
     MouseGetPos(&mouseX, &mouseY)
-    
-    ; 恢复坐标模式
     CoordMode("Mouse", oldCoordMode) 
     
-    ; 动态计算：鼠标右下方 45°，距离 50 像素 (X 和 Y 各偏移 35 像素)
+    ; 相对鼠标右下方 45° 偏移（X, Y 各 35 像素）
     showX := mouseX + 35
     showY := mouseY + 35
     
     FloatingGui.Show("x" showX " y" showY " NoActivate")
-    WinSetAlwaysOnTop(1, FloatingGui.Hwnd) ; 强制置顶，防止被新窗口遮挡
+    WinSetAlwaysOnTop(1, FloatingGui.Hwnd)
     SetTimer(HideFloatingIcon, -3000) 
 }
 
@@ -537,30 +553,25 @@ TriggerUpload(*) {
     }
 }
 
-; ==========================================
-; 10. YouGlish 划词搜索及自动触发 (Vimium 联动)
-; ==========================================
-
-; 🌟 新增：Ctrl+Shift+Y 直接触发 YouGlish
+; ==============================================================================
+; 10. YouGlish 划词搜索悬浮窗与快捷控制
+; ==============================================================================
 ^+y::TriggerYouGlish()
 
 ShowYouGlishIcon() {
-    ; 🌟 解决副屏漂移的核心：强制获取跨显示器的全局绝对坐标
     oldCoordMode := A_CoordModeMouse
     CoordMode("Mouse", "Screen")
     
     MouseGetPos(&mouseX, &mouseY)
-    
-    ; 恢复之前的坐标模式，避免影响脚本中的其他划词功能
     CoordMode("Mouse", oldCoordMode) 
     
-    ; 动态计算：在鼠标左侧 50 像素，并扣除图片真实宽度，高度居中
+    ; 计算定位：位于鼠标左侧 50 像素，结合图片实际宽度水平对齐，垂直居中
     showX := mouseX - 50 - ygIconWidth
     showY := mouseY - (ygIconHeight / 2)
     
     YouGlishGui.Show("x" showX " y" showY " NoActivate")
-    WinSetAlwaysOnTop(1, YouGlishGui.Hwnd) ; 置顶防遮挡
-    SetTimer(HideYouGlishIcon, -2000)
+    WinSetAlwaysOnTop(1, YouGlishGui.Hwnd)
+    SetTimer(HideYouGlishIcon, -5000)
 }
 
 HideYouGlishIcon() {
@@ -623,14 +634,37 @@ TriggerYouGlish(*) {
     }
 }
 
-; --- 全局清理悬浮窗快捷键 ---
+; 🌟 已按需求修改：定位到鼠标右侧 15 像素、Y 轴向上偏移 5 像素（下5像素方向微调）
+ShowCopiedIcon() {
+    oldCoordMode := A_CoordModeMouse
+    CoordMode("Mouse", "Screen")
+    
+    MouseGetPos(&mouseX, &mouseY)
+    CoordMode("Mouse", oldCoordMode) 
+    
+    ; 动态坐标计算
+    showX := mouseX - 20
+    showY := mouseY +20
+    
+    CopiedGui.Show("x" showX " y" showY " NoActivate")
+    WinSetAlwaysOnTop(1, CopiedGui.Hwnd)
+    SetTimer(HideCopiedIcon, -1500)
+}
+
+HideCopiedIcon() {
+    CopiedGui.Hide()
+}
+
+; 快捷按键清理/触发图片上传
 #+g:: {
     if (isImageReadyToUpload) {
         TriggerUpload()
     }
 }
 
+; Esc 快捷键关闭所有悬浮窗
 ~Esc:: {
     HideFloatingIcon() 
     HideYouGlishIcon()
+    HideCopiedIcon()
 }
