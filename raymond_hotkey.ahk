@@ -158,6 +158,9 @@ RegisterMultiTap("a", 3, TripleAAction)
 RegisterMultiTap("g", 4, QuadGAction)
 RegisterMultiTap("d", 4, QuadDAction)  ; 紧急恢复：清空剪贴板
 
+; 👇 【新增】右键连击 4 次
+RegisterMultiTap("RButton", 4, QuadRButtonAction) 
+
 ; ---【多击触发的具体执行函数】---
 QuadSpaceAction() {
     Send("{Ctrl Up}{Shift Up}{Alt Up}")
@@ -221,6 +224,15 @@ QuadDAction() {
     A_Clipboard := ""
     ShowTip("🗑️ 剪贴板已强制清空")
     Sleep(30)
+}
+
+; 👇 【新增】右键连击的具体执行逻辑
+QuadRButtonAction() {
+    ; 因为连点鼠标右键会呼出上下文菜单，所以先发一个 Esc 把菜单关掉，然后再触发 Enter
+    Send("{Esc}")
+    Sleep(50)
+    Send("{Enter}")
+    ShowTip("↩️ 触发 Enter")
 }
 
 ShowTip(text) {
