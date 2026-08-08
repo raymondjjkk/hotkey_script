@@ -17,6 +17,10 @@ global youglishIconPath := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymo
 global copiedIconPath  := "C:\Users\raymond\WPSDrive\1158436994\WPS云盘\Raymond_Workstation\chrome_app\programfiles\photo\copied.png"
 
 ; --- Gemini 悬浮窗 ---
+; 🌟 在这里自定义 Gemini 悬浮窗相对于鼠标的位置
+global geminiOffsetX := -60  ; X轴偏移量：正数向鼠标右侧偏移，负数向左侧偏移
+global geminiOffsetY := -60  ; Y轴偏移量：正数向鼠标下方偏移，负数向上方偏移
+
 global FloatingGui := Gui("+AlwaysOnTop -Caption +ToolWindow", "GeminiUploader")
 FloatingGui.BackColor := "EEAA99"  
 WinSetTransColor("EEAA99", FloatingGui) 
@@ -455,9 +459,9 @@ ShowFloatingIcon() {
     MouseGetPos(&mouseX, &mouseY)
     CoordMode("Mouse", oldCoordMode) 
     
-    ; 相对鼠标右下方 45° 偏移（X, Y 各 35 像素）
-    showX := mouseX + 35
-    showY := mouseY + 35
+    ; 🌟 使用刚才在开头设置的自定义坐标变量
+    showX := mouseX + geminiOffsetX
+    showY := mouseY + geminiOffsetY
     
     FloatingGui.Show("x" showX " y" showY " NoActivate")
     WinSetAlwaysOnTop(1, FloatingGui.Hwnd)
@@ -627,9 +631,56 @@ HideCopiedIcon() {
     }
 }
 
-; Esc 快捷键关闭所有悬浮窗
+; ==============================================================================
+; 10. 全局 Esc 综合管理区 (长按 Esc + 鼠标左键关闭窗口 & 关闭悬浮窗)
+; ==============================================================================
+global g_EscPressTime := 0            ; 记录 Esc 按下的时间戳
+global ESC_LONG_PRESS_THRESHOLD := 400 ; 触发长按的时间阈值，单位：毫秒
+
+; 拦截并处理 Esc 键按下（~ 保证 Esc 原生功能不受损）
 ~Esc:: {
+    global g_EscPressTime
+    
+    ; 如果为 0，说明是第一次按下，防止按住不放时键盘自动重复刷新时间戳
+    if (g_EscPressTime == 0) {
+        g_EscPressTime := A_TickCount
+    }
+    
+    ; 触发原有的 Esc 功能：关闭所有悬浮窗
     HideFloatingIcon() 
     HideYouGlishIcon()
     HideCopiedIcon()
 }
+
+; 拦截 Esc 键抬起，重置时间戳
+~Esc up:: {
+    global g_EscPressTime
+    g_EscPressTime := 0
+}
+
+; 动态指令：只有在物理按住 Esc 键的情况下，才接管鼠标左键
+#HotIf GetKeyState("Esc", "P")
+$LButton:: {
+    global g_EscPressTime, ESC_LONG_PRESS_THRESHOLD
+    
+    ; 1. 检查是否满足长按条件：Esc 已经按下，且持续时间超过了 400ms
+    if (g_EscPressTime > 0 && (A_TickCount - g_EscPressTime >= ESC_LONG_PRESS_THRESHOLD)) {
+        
+        ; 获取当前鼠标指针下方的窗口句柄（防误关焦点窗口）
+        MouseGetPos ,, &hoverWin
+        
+        ; 尝试关闭该窗口，try块防止管理员权限窗口导致的报错弹窗
+        if hoverWin {
+            try {
+                WinClose hoverWin
+            }
+        }
+    } 
+    else {
+        ; 2. 如果没达到长按时间，说明用户只是普通连按，放行鼠标点击
+        Send "{Blind}{LButton down}"
+        KeyWait "LButton"
+        Send "{Blind}{LButton up}"
+    }
+}
+#HotIf
