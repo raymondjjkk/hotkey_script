@@ -144,8 +144,6 @@ SmartRun(Path) {
 ; ==============================================================================
 ; 4. 系统化【多击按键】注册与触发响应区
 ; ==============================================================================
-RegisterMultiTap("LAlt", 3, TripleAltAction)  
-RegisterMultiTap("RAlt", 3, TripleAltAction)  
 RegisterMultiTap("Space", 4, QuadSpaceAction)
 RegisterMultiTap("n", 5, PentaNAction)
 RegisterMultiTap("z", 3, TripleZAction)
@@ -157,12 +155,6 @@ RegisterMultiTap("g", 4, QuadGAction)
 RegisterMultiTap("d", 4, QuadDAction)  ; 紧急恢复：清空剪贴板
 
 ; ---【多击触发的具体执行函数】---
-TripleAltAction() {
-    Send("{Control}")     
-    Send("^v")            
-    ShowTip("📋 已粘贴")
-}
-
 QuadSpaceAction() {
     Send("{Ctrl Up}{Shift Up}{Alt Up}")
     Send("{Backspace 4}")
@@ -427,34 +419,7 @@ global g_AutoCopy_StartTime := 0
 }
 
 ; ==============================================================================
-; 8. 鼠标右键三连击快捷粘贴
-; ==============================================================================
-RClick_TargetCount := 3
-RClick_TimeLimit   := 450
-
-~RButton:: {
-    static lastTime := 0
-    static clickCount := 0
-
-    now := A_TickCount
-    if (now - lastTime > RClick_TimeLimit) {
-        clickCount := 1
-    } else {
-        clickCount++
-    }
-    lastTime := now
-
-    if (clickCount >= RClick_TargetCount) {
-        clickCount := 0
-        Send("^v")
-        Sleep(50)
-        Send("{Esc}")
-        ShowTip("📋 已粘贴")
-    }
-}
-
-; ==============================================================================
-; 9. 剪贴板图像监听与 Gemini 自动上传处理
+; 8. 剪贴板图像监听与 Gemini 自动上传处理
 ; ==============================================================================
 ClipboardChangedHandler(DataType) {
     global g_ClipboardLastChangeTime, isImageReadyToUpload
@@ -554,7 +519,7 @@ TriggerUpload(*) {
 }
 
 ; ==============================================================================
-; 10. YouGlish 划词搜索悬浮窗与快捷控制
+; 9. YouGlish 划词搜索悬浮窗与快捷控制
 ; ==============================================================================
 ^+y::TriggerYouGlish()
 
