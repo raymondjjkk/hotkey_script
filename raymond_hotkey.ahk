@@ -535,7 +535,7 @@ ShowYouGlishIcon() {
     CoordMode("Mouse", oldCoordMode) 
     
     ; 计算定位：位于鼠标左侧 50 像素，结合图片实际宽度水平对齐，垂直居中
-    showX := mouseX - 30 - ygIconWidth
+    showX := mouseX - 40 - ygIconWidth
     showY := mouseY +15 - (ygIconHeight / 2)
     
     YouGlishGui.Show("x" showX " y" showY " NoActivate")
@@ -612,7 +612,7 @@ ShowCopiedIcon() {
     CoordMode("Mouse", oldCoordMode) 
     
     ; 动态坐标计算
-    showX := mouseX -5
+    showX := mouseX +70
     showY := mouseY -2
     
     CopiedGui.Show("x" showX " y" showY " NoActivate")
